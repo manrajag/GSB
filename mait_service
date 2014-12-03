@@ -1,0 +1,101 @@
+#!/bin/sh
+# mait - This script runs the Multiplatform Automated Install Tool - MAIT tool
+# chkconfig: 345 99 99
+# description: This tool allows to install some application software
+
+# Source function library.
+. /etc/rc.d/init.d/functions
+
+RETVAL=0
+
+#JAVAPATH="/opt/IBMJava2-142/jre/bin/java"
+JAVAPATH="/usr/bin/java"
+
+case "$1" in
+
+default|ods|interactive)
+#  java -cp /opt/esd/mait menu.MAITInstaller /opt/esd/mait/config/mait.cfg buildsheet /opt/esd/mait/test.bsf
+if [[ ! -d /opt/esd/mait  ]]; then
+	action "... unable to find mait ..." /bin/false
+	exit 10
+fi
+if [[ ! -f $JAVAPATH ]]; then
+	action "... unable to find java ..." /bin/false
+	exit 11
+fi
+echo "Insert cdrom/USB key or type the mounted Global Repository (GR) directory :"
+read ans
+ESDSourceMount="${ans}"
+if [[ $ans == "" ]]; then
+	mkdir -p /mnt/mait
+	umount /mnt/mait 2>/dev/null
+	for device in sda hda sdb hdb sdc hdc sdd hdd sde hde sdf hdf sdh hdh wrong_device
+	do
+		mount /dev/${device} /mnt/mait
+		[[ $? -eq 0 ]] && action "... OK use /dev/${device}" /bin/true && break
+	done
+	if [[ $device == "wrong_device" ]]; then
+		action "... unable to mount CD/USB key ..." /bin/false
+		exit 20
+	fi
+	ESDSourceMount="/mnt/mait"
+fi
+if [[ ! -d $ans/esd ]]; then
+	action "... ${ans} is NOT ESD directory ..." /bin/false
+	exit 21
+fi
+#
+mkdir -p /var/esd/mait/logs
+# mkdir -p /var/esd/mait/packages
+mkdir -p /var/esd/mait/BUILDSHEET
+#
+# cp -fp /mnt/mait/*.tar /var/esd/mait/packages/
+# rm -rf /var/esd/mait/install
+# mkdir -p /var/esd/mait/install
+# cd /var/esd/mait/install
+# for mait_archive in `ls /mnt/mait/*.tar`
+# do
+# 	tar -xf $mait_archive
+# done
+# cd - 2>/dev/null
+#
+egrep -v "^ESDSourceMount|^ESDInstallMount|^LogDir|^InstallMethod" /opt/esd/mait/config/mait.cfg.sample > /opt/esd/mait/config/mait.cfg
+echo "ESDSourceMount=$ESDSourceMount" >> /opt/esd/mait/config/mait.cfg
+echo "ESDInstallMount=$ESDSourceMount" >> /opt/esd/mait/config/mait.cfg
+echo "InstallMethod=remote" >> /opt/esd/mait/config/mait.cfg
+echo "LogDir=/var/esd/mait/logs" >> /opt/esd/mait/config/mait.cfg
+#
+if [[ "$1" == "default" ]]; then
+	TIMESTAMP=`date +"%y %m %d %H %M %S" | sed 's/ //g'`
+	echo "$JAVAPATH -cp /opt/esd/mait menu.MAITInstaller /opt/esd/mait/config/mait.cfg buildsheet /var/esd/mait/BUILDSHEET/BUILDSHEET_$TIMESTAMP.bsf"
+	$JAVAPATH -cp /opt/esd/mait menu.MAITInstaller /opt/esd/mait/config/mait.cfg buildsheet /var/esd/mait/BUILDSHEET/BUILDSHEET_$TIMESTAMP.bsf
+	if [[ $? -ne 0 ]]; then
+		action "... unable to create the buildsheet ... " /bin/false
+		exit 30
+	fi
+
+	sed "s?^mait:reboot=?#mait:reboot=?g" /var/esd/mait/BUILDSHEET/BUILDSHEET_$TIMESTAMP.bsf > /var/esd/mait/BUILDSHEET/BUILDSHEET_$TIMESTAMP.bsf.tmp
+	sed "s?^#PACKAGE:?PACKAGE:?g" /var/esd/mait/BUILDSHEET/BUILDSHEET_$TIMESTAMP.bsf.tmp > /var/esd/mait/BUILDSHEET/BUILDSHEET_$TIMESTAMP.bsf
+	rm -f /var/esd/mait/BUILDSHEET/BUILDSHEET_$TIMESTAMP.bsf.tmp
+	$JAVAPATH -cp /opt/esd/mait menu.MAITInstaller /opt/esd/mait/config/mait.cfg batch /var/esd/mait/BUILDSHEET/BUILDSHEET_$TIMESTAMP.bsf
+fi
+if [[ "$1" == "ods" ]]; then
+	echo "$JAVAPATH -cp /opt/esd/mait menu.MAITInstaller /opt/esd/mait/config/mait.cfg batch /var/esd/mait/BUILDSHEET/BUILDSHEET_ODS.bsf"
+	$JAVAPATH -cp /opt/esd/mait menu.MAITInstaller /opt/esd/mait/config/mait.cfg batch /var/esd/mait/BUILDSHEET/BUILDSHEET_ODS.bsf
+fi
+if [[ "$1" == "interactive" ]]; then
+	echo "$JAVAPATH -cp /opt/esd/mait menu.MAITInstaller /opt/esd/mait/config/mait.cfg"
+	$JAVAPATH -cp /opt/esd/mait menu.MAITInstaller /opt/esd/mait/config/mait.cfg
+fi
+
+;;
+
+*)
+echo "Usage: service mait {default|ods|interactive}"
+RETVAL=1
+;;
+
+esac
+
+exit $RETVAL
+#
